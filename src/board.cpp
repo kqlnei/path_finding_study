@@ -1,5 +1,7 @@
 ﻿#include "board.h"
-
+#include <queue>
+#include <unordered_map>
+#include <cmath>
 std::map<Mass::status, MassInfo> Mass::statusData =
 {
 	{ BLANK, { 1.0f, ' '}},
@@ -15,75 +17,80 @@ std::map<Mass::status, MassInfo> Mass::statusData =
 	{ INVALID,  {-1.0f, '\0'}},
 };
 
+float Board::getMoveCost(const Mass& mass, bool isDiagonal) const {
+    float baseCost = mass.getCost();
+    if (baseCost < 0) return std::numeric_limits<float>::max(); // 壁など
+    float diagonalMultiplier = isDiagonal ? 1.414f : 1.0f;
+    return baseCost * diagonalMultiplier;
+}
 
-bool Board::find(const Point& start, const Point& goal, std::vector<std::vector<Mass>> &mass) const
-{
-	 struct Node {
-        Point point;
-        float costSoFar;
-        float priority;
+bool Board::find(const Point& start, const Point& goal, std::vector<std::vector<Mass>>& mass) const {
 
-        bool operator>(const Node& other) const {
-            return priority > other.priority;
-        }
+
+    mass[start.y][start.x].set(Mass::START);
+    mass[goal.y][goal.x].set(Mass::GOAL);
+
+    const int dx[] = { 1, 0, -1, 0, 1, 1, -1, -1 };
+    const int dy[] = { 0, 1, 0, -1, 1, -1, 1, -1 };
+
+    auto compare = [](const std::pair<Point, float>& a, const std::pair<Point, float>& b) {
+
+        return a.second > b.second;
+    };
+    std::priority_queue<std::pair<Point, float>, std::vector<std::pair<Point, float>>, decltype(compare)> openSet(compare);
+
+    std::unordered_map<int, Point> cameFrom;
+    std::unordered_map<int, float> gScore;
+    std::unordered_map<int, float> fScore;
+
+    auto h = [&goal, this](const Point& p) {
+        return Point::distance(p, goal) * Mass::getStatusCost(Mass::BLANK);
+    };
+    
+    auto getKey = [&mass](const Point& p) {
+        return p.y * mass[0].size() + p.x;
     };
 
-    auto manhattanDistance = [](const Point& a, const Point& b) {
-        return std::abs(a.x - b.x) + std::abs(a.y - b.y);
-    };
+    openSet.push({ start, h(start) });
+    gScore[getKey(start)] = 0;
+    fScore[getKey(start)] = h(start);
 
-    auto isValid = [&](const Point& p) {
-        return p.x >= 0 && p.y >= 0 && p.y < mass.size() && p.x < mass[0].size() && mass[p.y][p.x].canMove();
-    };
+    while (!openSet.empty()) {
+        Point current = openSet.top().first;
+        openSet.pop();
 
-    auto updateMass = [&](const Point& p, float costSoFar) {
-        if (isValid(p) && (costSoFar < mass[p.y][p.x].getCost() || mass[p.y][p.x].getCost() < 0)) {
-            mass[p.y][p.x].set(Mass::WAYPOINT);
+        if (current == goal) {
+            // 経路を再構築
+            while (current != start) {
+                if (current != goal) {
+                    mass[current.y][current.x].set(Mass::WAYPOINT);
+                }
+                current = cameFrom[getKey(current)];
+            }
             return true;
         }
-        return false;
-    };
 
-    std::priority_queue<Node, std::vector<Node>, std::greater<Node>> frontier;
-    std::vector<std::vector<bool>> visited(mass.size(), std::vector<bool>(mass[0].size(), false));
-
-    frontier.push({start, 0, manhattanDistance(start, goal)});
-
-    while (!frontier.empty()) {
-        Node current = frontier.top();
-        frontier.pop();
-
-        if (current.point == goal) {
-            return true; // Found the goal
-        }
-
-        if (visited[current.point.y][current.point.x]) {
-            continue;
-        }
-        visited[current.point.y][current.point.x] = true;
-
-        Point neighbors[] = {
-            {current.point.x - 1, current.point.y},
-            {current.point.x + 1, current.point.y},
-            {current.point.x, current.point.y - 1},
-            {current.point.x, current.point.y + 1}
-        };
-
-        for (const auto& neighbor : neighbors) {
-            if (!isValid(neighbor) || visited[neighbor.y][neighbor.x]) {
+        for (int i = 0; i < 8; ++i) {
+            Point neighbor = { current.x + dx[i], current.y + dy[i] };
+            if (neighbor.x < 0 || neighbor.x >= mass[0].size() || neighbor.y < 0 || neighbor.y >= mass.size()) {
+                continue;
+            }
+            if (!mass[neighbor.y][neighbor.x].canMove()) {
                 continue;
             }
 
-            float newCost = current.costSoFar + mass[neighbor.y][neighbor.x].getCost();
-            if (mass[neighbor.y][neighbor.x].getCost() > 0) {
-                newCost += manhattanDistance(neighbor, goal);
-            }
+            bool isDiagonal = (i >= 4);
+            float moveCost = getMoveCost(mass[neighbor.y][neighbor.x], isDiagonal);
+            float tentative_gScore = gScore[getKey(current)] + moveCost;
 
-            if (updateMass(neighbor, newCost)) {
-                frontier.push({neighbor, newCost, newCost + manhattanDistance(neighbor, goal)});
+            if (!gScore.count(getKey(neighbor)) || tentative_gScore < gScore[getKey(neighbor)]) {
+                cameFrom[getKey(neighbor)] = current;
+                gScore[getKey(neighbor)] = tentative_gScore;
+                fScore[getKey(neighbor)] = gScore[getKey(neighbor)] + h(neighbor);
+                openSet.push({ neighbor, fScore[getKey(neighbor)] });
             }
         }
     }
 
-    return false;
+    return false;  // パスが見つからなかった
 }

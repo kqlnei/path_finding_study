@@ -1,5 +1,4 @@
-﻿#pragma once
-#include <cassert>
+﻿#include <cassert>
 #include <iostream>
 #include <vector>
 #include <map>
@@ -12,7 +11,7 @@ struct Point {
 		return x == rhs.x && y == rhs.y;
 	}
 	// != は == の否定で定義
-	bool operator != (const Point& rhs) const {return !(*this == rhs);}
+	bool operator != (const Point& rhs) const { return !(*this == rhs); }
 
 	Point operator+(const Point& rhs) const { return { x + rhs.x, y + rhs.y }; }
 
@@ -45,6 +44,8 @@ public:
 
 		INVALID,	// 無効な値
 	};
+	static float getStatusCost(status s) { return statusData[s].cost; }
+
 private:
 	static std::map<status, MassInfo> statusData;
 	status s_ = BLANK;
@@ -56,9 +57,9 @@ public:
 		for (auto& x : statusData) { if (x.second.chr == c) { s_ = x.first; return; } }
 	}
 
-	const std::string getText() const { return std::string{ statusData[s_].chr}; }
+	const std::string getText() const { return std::string{ statusData[s_].chr }; }
 
-	bool canMove() const { return 0 <= statusData[s_].cost; }
+	bool canMove() const { return s_ != WALL; }
 	float getCost() const { return statusData[s_].cost; }
 };
 
@@ -66,7 +67,7 @@ class Board {
 private:
 	std::vector<std::vector<Mass>> map_;
 
-	void initialize(const std::vector<std::string> &map_data)
+	void initialize(const std::vector<std::string>& map_data)
 	{
 		size_t 縦 = map_data.size();
 		size_t 横 = map_data[0].size();
@@ -77,14 +78,14 @@ private:
 			map_[y].resize(横);
 
 			assert(map_data[y].size() == 横);// 整合性チェック
-			for(int x = 0; x < 横; x++) {
+			for (int x = 0; x < 横; x++) {
 				map_[y][x].set(map_data[y][x]);
 			}
 		}
 	}
 
 public:
-	Board(const std::vector<std::string>& map_data) {initialize(map_data);}
+	Board(const std::vector<std::string>& map_data) { initialize(map_data); }
 	~Board() {}
 
 	// massの準備(サイズを設定して、map_をコピー)
@@ -123,7 +124,7 @@ public:
 		}
 		std::cout << std::endl;// 下を空ける
 	}
-
+	float getMoveCost(const Mass& mass, bool isDiagonal) const;
 	// 経路探索！
 	bool find(const Point& start, const Point& goal, std::vector<std::vector<Mass>>& mass) const;
 };
